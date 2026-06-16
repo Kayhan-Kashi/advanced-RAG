@@ -39,15 +39,15 @@ class LLMService:
         Answer: 
         """)
         
-        # 3. Create document combination chain
+        # 3. Create document combination chain (kept for potential future use)
         combine_docs_chain = create_stuff_documents_chain(self.llm, self.prompt)
         
         # 4. Create retrieval chain with Ensemble Retriever ONLY
         self.ensemble_retriever = self.rag_service.get_ensemble_retriever(
             faiss_weight=float(os.getenv("FAISS_WEIGHT", "0.7")),
             bm25_weight=float(os.getenv("BM25_WEIGHT", "0.3")),
-            faiss_k=int(os.getenv("FAISS_RETRIEVAL_K", "10")),
-            bm25_k=int(os.getenv("BM25_RETRIEVAL_K", "10"))
+            faiss_k=int(os.getenv("FAISS_RETRIEVAL_K", "50")),
+            bm25_k=int(os.getenv("BM25_RETRIEVAL_K", "50"))
         )
         
         if self.ensemble_retriever is None:
@@ -55,14 +55,16 @@ class LLMService:
             logger.error(error_msg)
             raise RuntimeError(error_msg)
         
+        # Store chain for potential fallback, but we'll use direct LLM calls
+        self.combine_docs_chain = combine_docs_chain
         self.chain = create_retrieval_chain(self.ensemble_retriever, combine_docs_chain)
         self.retriever_type = "ensemble (FAISS + BM25)"
         
         logger.info("✅ LLM Service initialized with Ensemble Retriever ONLY")
         logger.info(f"   FAISS weight: {os.getenv('FAISS_WEIGHT', '0.7')}")
         logger.info(f"   BM25 weight: {os.getenv('BM25_WEIGHT', '0.3')}")
-        logger.info(f"   FAISS k: {os.getenv('FAISS_RETRIEVAL_K', '10')}")
-        logger.info(f"   BM25 k: {os.getenv('BM25_RETRIEVAL_K', '10')}")
+        logger.info(f"   FAISS k: {os.getenv('FAISS_RETRIEVAL_K', '50')}")
+        logger.info(f"   BM25 k: {os.getenv('BM25_RETRIEVAL_K', '50')}")
         
         stats = self.rag_service.get_stats()
         if stats['faiss']['total_vectors'] > 0:
@@ -77,16 +79,12 @@ class LLMService:
 
     async def generate(self, prompt: str, file_ids: Optional[List[str]] = None) -> str:
         """Generate answer using RAG with Ensemble Retriever and optional file filtering"""
-        if not self.chain:
-            error_msg = "Ensemble retriever chain is not initialized"
-            logger.error(error_msg)
-            return f"Error: {error_msg}"
-
         try:
             logger.info(f"📝 User Question: {prompt}")
             if file_ids:
                 logger.info(f"   📁 Filtering to file_ids: {file_ids}")
             
+            # 1. Retrieve chunks using your custom logic (with reranker)
             retrieved_chunks = await self._retrieve_with_details(prompt, file_ids=file_ids)
             
             if not retrieved_chunks:
@@ -103,11 +101,10 @@ class LLMService:
                 if 'reranker_score' in chunk.metadata:
                     logger.info(f"      Reranker Score: {chunk.metadata['reranker_score']:.4f}")
             
-            # ============ BUILD AND LOG THE FINAL PROMPT ============
-            # Build context from retrieved chunks
+            # 2. Build context from retrieved chunks
             context_text = "\n\n---\n\n".join([chunk.page_content for chunk in retrieved_chunks])
             
-            # Format the final prompt
+            # 3. Format the prompt with your context
             formatted_messages = self.prompt.format_messages(context=context_text, input=prompt)
             final_prompt_text = formatted_messages[0].content if formatted_messages else ""
             
@@ -124,12 +121,14 @@ class LLMService:
             logger.info("-" * 100)
             logger.info(final_prompt_text)
             logger.info("=" * 100)
-            # ============ END PROMPT LOGGING ============
             
-            response = await self.chain.ainvoke({"input": prompt})
+            # 4. ⭐ DIRECTLY CALL THE LLM with your formatted messages ⭐
+            # This bypasses the chain and uses YOUR retrieved context
+            response = await self.llm.ainvoke(formatted_messages)
+            answer = response.content.strip()
             
-            logger.info(f"💬 LLM Response: {response['answer'][:300]}...")
-            return response["answer"].strip()
+            logger.info(f"💬 LLM Response: {answer[:300]}...")
+            return answer
             
         except Exception as e:
             logger.error(f"LLM RAG generation error: {e}")
@@ -137,9 +136,6 @@ class LLMService:
     
     async def generate_with_sources(self, prompt: str, file_ids: Optional[List[str]] = None) -> Dict[str, Any]:
         """Generate answer and return with source documents"""
-        if not self.chain:
-            return {"answer": "Error: Ensemble retriever chain is not initialized.", "sources": [], "retrieval_method": "none"}
-
         try:
             logger.info(f"📝 User Question: {prompt}")
             if file_ids:
@@ -166,11 +162,14 @@ class LLMService:
             logger.info(context_text)
             logger.info("=" * 100)
             
-            response = await self.chain.ainvoke({"input": prompt})
+            # ⭐ DIRECTLY CALL THE LLM ⭐
+            formatted_messages = self.prompt.format_messages(context=context_text, input=prompt)
+            response = await self.llm.ainvoke(formatted_messages)
+            answer = response.content.strip()
             
             sources = [{"rank": i, "content_preview": chunk.page_content[:200], "full_content": chunk.page_content, "document_id": chunk.metadata.get('document_id'), "filename": chunk.metadata.get('filename'), "reranker_score": chunk.metadata.get('reranker_score')} for i, chunk in enumerate(retrieved_chunks, 1)]
             
-            return {"answer": response["answer"].strip(), "sources": sources, "retrieval_method": self.retriever_type, "total_chunks_retrieved": len(retrieved_chunks)}
+            return {"answer": answer, "sources": sources, "retrieval_method": self.retriever_type, "total_chunks_retrieved": len(retrieved_chunks)}
             
         except Exception as e:
             logger.error(f"LLM RAG generation error: {e}")
@@ -178,16 +177,13 @@ class LLMService:
     
     async def generate_with_ensemble_only(self, prompt: str, k: int = 5, file_ids: Optional[List[str]] = None) -> Dict[str, Any]:
         """Generate answer using ONLY ensemble retriever with detailed output"""
-        if not self.chain:
-            return {"answer": "Ensemble retriever is not available", "retrieved_chunks": [], "weights_used": None}
-        
         try:
             if file_ids:
                 retrieved_chunks = self.rag_service.search_with_file_filtering(prompt, file_ids, k)
             else:
                 ensemble_retriever = self.rag_service.get_ensemble_retriever(
-                    faiss_weight=float(os.getenv("FAISS_WEIGHT", "0.5")),
-                    bm25_weight=float(os.getenv("BM25_WEIGHT", "0.5")),
+                    faiss_weight=float(os.getenv("FAISS_WEIGHT", "0.7")),
+                    bm25_weight=float(os.getenv("BM25_WEIGHT", "0.3")),
                     faiss_k=k * 2,
                     bm25_k=k * 2
                 )
@@ -210,12 +206,15 @@ class LLMService:
             logger.info(context_text)
             logger.info("=" * 100)
             
-            response = await self.chain.ainvoke({"input": prompt})
+            # ⭐ DIRECTLY CALL THE LLM ⭐
+            formatted_messages = self.prompt.format_messages(context=context_text, input=prompt)
+            response = await self.llm.ainvoke(formatted_messages)
+            answer = response.content.strip()
             
             return {
-                "answer": response["answer"].strip(),
+                "answer": answer,
                 "retrieved_chunks": [{"content": chunk.page_content, "metadata": chunk.metadata} for chunk in retrieved_chunks],
-                "weights_used": {"faiss": float(os.getenv("FAISS_WEIGHT", "0.5")), "bm25": float(os.getenv("BM25_WEIGHT", "0.5"))},
+                "weights_used": {"faiss": float(os.getenv("FAISS_WEIGHT", "0.7")), "bm25": float(os.getenv("BM25_WEIGHT", "0.3"))},
                 "num_chunks_retrieved": len(retrieved_chunks)
             }
             
@@ -235,8 +234,8 @@ class LLMService:
                 final_k=k,
                 faiss_weight=float(os.getenv("FAISS_WEIGHT", "0.7")),
                 bm25_weight=float(os.getenv("BM25_WEIGHT", "0.3")),
-                faiss_k=int(os.getenv("FAISS_RETRIEVAL_K", "10")),
-                bm25_k=int(os.getenv("BM25_RETRIEVAL_K", "10"))
+                faiss_k=int(os.getenv("FAISS_RETRIEVAL_K", "50")),
+                bm25_k=int(os.getenv("BM25_RETRIEVAL_K", "50"))
             )
             return results
         else:
@@ -255,7 +254,7 @@ class LLMService:
             "faiss_vectors": stats['faiss']['total_vectors'],
             "bm25_chunks": stats['bm25']['total_chunks'],
             "retriever_type": self.retriever_type,
-            "config": {"faiss_weight": os.getenv("FAISS_WEIGHT", "0.5"), "bm25_weight": os.getenv("BM25_WEIGHT", "0.5"), "faiss_k": os.getenv("FAISS_RETRIEVAL_K", "10"), "bm25_k": os.getenv("BM25_RETRIEVAL_K", "10")}
+            "config": {"faiss_weight": os.getenv("FAISS_WEIGHT", "0.7"), "bm25_weight": os.getenv("BM25_WEIGHT", "0.3"), "faiss_k": os.getenv("FAISS_RETRIEVAL_K", "50"), "bm25_k": os.getenv("BM25_RETRIEVAL_K", "50")}
         }
     
     def get_retrieval_stats(self) -> Dict[str, Any]:
@@ -264,10 +263,10 @@ class LLMService:
         stats["retriever_type"] = self.retriever_type
         stats["ensemble_active"] = self.ensemble_retriever is not None
         stats["config"] = {
-            "faiss_weight": os.getenv("FAISS_WEIGHT", "0.5"),
-            "bm25_weight": os.getenv("BM25_WEIGHT", "0.5"),
-            "faiss_k": os.getenv("FAISS_RETRIEVAL_K", "10"),
-            "bm25_k": os.getenv("BM25_RETRIEVAL_K", "10"),
+            "faiss_weight": os.getenv("FAISS_WEIGHT", "0.7"),
+            "bm25_weight": os.getenv("BM25_WEIGHT", "0.3"),
+            "faiss_k": os.getenv("FAISS_RETRIEVAL_K", "50"),
+            "bm25_k": os.getenv("BM25_RETRIEVAL_K", "50"),
             "ollama_model": os.getenv("OLLAMA_MODEL", "gemma3:12b"),
             "temperature": os.getenv("OLLAMA_TEMPERATURE", "0.3")
         }

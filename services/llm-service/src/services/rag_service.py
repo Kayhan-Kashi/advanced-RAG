@@ -642,7 +642,13 @@ class RagService:
     
     def search_with_file_filtering(self, query: str, file_ids: List[str], k: int = 5, use_reranker: bool = True) -> List[Document]:
         """
-        Search only within specified files, optionally with reranking
+        Hybrid search with file filtering:
+        1. FAISS: Search all vectors → filter results by file_id (no re-encoding)
+        2. BM25: Filter chunks by file_id → then search (fast keyword matching)
+        3. Combine both results → deduplicate
+        4. Apply reranker (optional)
+        
+        This avoids re-encoding and gives best of both semantic + keyword search.
         
         Args:
             query: Search query
@@ -653,45 +659,80 @@ class RagService:
         Returns:
             List of relevant documents from the specified files
         """
-        filtered_chunks = self.get_chunks_by_file_ids(file_ids)
+        if not file_ids:
+            logger.warning("No file_ids provided")
+            return self.search_with_reranker(query, k)
         
-        if not filtered_chunks:
-            logger.warning(f"No chunks found for file_ids: {file_ids}")
-            return []
+        faiss_results = []
+        bm25_results = []
         
-        try:
-            # Create temporary FAISS index with filtered chunks
-            langchain_compatible_model = JinaLangChainWrapper(self.embedding_service.model)
-            temp_vector_store = FAISS.from_documents(filtered_chunks, langchain_compatible_model)
-            
-            # Retrieve more if reranking is enabled
-            retrieve_k = k * 3 if use_reranker else k
-            retriever = temp_vector_store.as_retriever(
+        # ============ STEP 1: FAISS - Search all, then filter by file_id ============
+        if self.vector_store is not None:
+            fetch_k = k * 5  # Get more to ensure enough after filtering
+            retriever = self.vector_store.as_retriever(
                 search_type="mmr",
-                search_kwargs={"k": retrieve_k, "fetch_k": min(100, len(filtered_chunks)), "lambda_mult": 0.7}
+                search_kwargs={"k": fetch_k, "fetch_k": self.mmr_fetch_k, "lambda_mult": self.mmr_lambda_mult}
             )
             
-            results = retriever.invoke(query)
-            logger.info(f"🔍 File-filtered search retrieved {len(results)} results from {len(filtered_chunks)} chunks")
+            all_results = retriever.invoke(query)
+            logger.info(f"🔍 FAISS retrieved {len(all_results)} results from main index")
             
-            # Apply reranking if enabled and available
-            if use_reranker and self.reranker is not None:
-                logger.info("🎯 Applying reranker to file-filtered results")
-                results = self._rerank_chunks(query, results, top_k=k)
+            # Filter FAISS results by file_ids
+            file_id_set = set(str(fid) for fid in file_ids)
+            faiss_results = [
+                doc for doc in all_results 
+                if str(doc.metadata.get('document_id')) in file_id_set
+            ]
+            logger.info(f"📁 FAISS filtered to {len(faiss_results)} chunks from selected files")
+        
+        # ============ STEP 2: BM25 - Filter by file_id first, then search ============
+        if self.bm25_retriever is not None:
+            # Get only chunks from selected files
+            filtered_chunks = self.get_chunks_by_file_ids(file_ids)
+            
+            if filtered_chunks:
+                # Create BM25 from filtered chunks only
+                bm25 = BM25Retriever.from_documents(filtered_chunks)
+                bm25.k = k * 2  # Get more from BM25
+                bm25_results = bm25.invoke(query)
+                logger.info(f"🔍 BM25 retrieved {len(bm25_results)} results from {len(filtered_chunks)} filtered chunks")
             else:
-                # Just limit to k
-                results = results[:k]
-            
-            logger.info(f"✅ File-filtered search returned {len(results)} final results")
-            return results
-            
-        except Exception as e:
-            logger.error(f"❌ File-filtered search failed: {e}")
-            # Fallback: if reranker is available, just rerank the filtered chunks directly
-            if use_reranker and self.reranker:
-                logger.info("🔄 Fallback: Reranking filtered chunks directly")
-                return self._rerank_chunks(query, filtered_chunks, top_k=k)
-            return filtered_chunks[:k]
+                logger.warning("No chunks found for BM25 filtering")
+        
+        # ============ STEP 3: Combine and deduplicate ============
+        seen_content = set()
+        combined_results = []
+        
+        # Add FAISS results first (semantic quality)
+        for doc in faiss_results:
+            content_hash = hash(doc.page_content[:100])
+            if content_hash not in seen_content:
+                seen_content.add(content_hash)
+                combined_results.append(doc)
+        
+        # Add BM25 results (keyword quality)
+        for doc in bm25_results:
+            content_hash = hash(doc.page_content[:100])
+            if content_hash not in seen_content:
+                seen_content.add(content_hash)
+                combined_results.append(doc)
+        
+        logger.info(f"📊 Combined: {len(combined_results)} unique results (FAISS: {len(faiss_results)}, BM25: {len(bm25_results)})")
+        
+        # If no results, return empty
+        if not combined_results:
+            logger.warning("No results found from any retriever")
+            return []
+        
+        # ============ STEP 4: Reranking (optional) ============
+        if use_reranker and self.reranker is not None:
+            logger.info("🎯 Applying reranker to combined results")
+            combined_results = self._rerank_chunks(query, combined_results, top_k=k)
+        else:
+            combined_results = combined_results[:k]
+        
+        logger.info(f"✅ Final results: {len(combined_results)} documents")
+        return combined_results
     
     # ============ END FILE FILTERING METHODS ============
     
