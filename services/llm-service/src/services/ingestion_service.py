@@ -12,7 +12,7 @@ from langchain_core.documents import Document
 from src.core.document_loader import DocumentLoader
 from src.core.text_chunker import TextChunker
 from src.core.text_preprocessor import TextPreprocessor
-from src.core.JinaLangChainWrapper import JinaLangChainWrapper
+from src.core.jina_wrapper import JinaLangChainWrapper
 from src.core.embedding_model import EmbeddingModel
 
 logger = logging.getLogger(__name__)

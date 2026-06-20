@@ -65,8 +65,6 @@ Answer:
         logger.info("✅ LLMService initialized with HyDE support")
         logger.info(f"   HyDE default: {self.use_hyde_default}")
 
-    # ============ HYDE CALL (LLM Call 1) ============
-    
     def generate_hypothetical_document(self, query: str) -> str:
         """
         LLM Call 1: Generate a hypothetical document from the query (HyDE).
@@ -122,8 +120,6 @@ Answer:
         except Exception as e:
             logger.error(f"HyDE generation failed: {e}")
             return query  # Fallback to original query
-
-    # ============ MAIN GENERATE (Called by Worker) ============
 
     async def generate(
         self, 
