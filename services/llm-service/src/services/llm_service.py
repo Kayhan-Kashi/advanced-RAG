@@ -18,14 +18,12 @@ class LLMService:
     def __init__(self, rag_service: RagService):
         self.rag_service = rag_service
         
-        # Initialize LLM
         self.llm = ChatOllama(
             model=os.getenv("OLLAMA_MODEL", "gemma3:12b"),
             base_url=os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434"),
             temperature=float(os.getenv("OLLAMA_TEMPERATURE", "0.3")),
         )
         
-        # ============ HYDE PROMPT (LLM Call 1) ============
         self.hyde_prompt = ChatPromptTemplate.from_template("""
 You are an AI assistant. Given a user question, write a hypothetical document that would contain the answer.
 This hypothetical document will be used for semantic search to find similar real documents.
@@ -59,7 +57,6 @@ Question: {input}
 Answer: 
 """)
         
-        # Environment variable to control HyDE (default: True)
         self.use_hyde_default = os.getenv("USE_HYDE", "False").lower() == "true"
         
         logger.info("✅ LLMService initialized with HyDE support")
@@ -91,7 +88,7 @@ Answer:
             
         except Exception as e:
             logger.error(f"HyDE generation failed: {e}")
-            return query  # Fallback to original query
+            return query 
     
     async def generate_hypothetical_document_async(self, query: str) -> str:
         """
@@ -159,7 +156,6 @@ Answer:
                 logger.info(f"   📜 History: {len(history)} messages")
             logger.info("=" * 80)
             
-            # ============ STEP 1: Generate HyDE query (LLM Call 1) ============
             search_query = prompt
             
             if use_hyde:
@@ -169,7 +165,6 @@ Answer:
             else:
                 logger.info("\n📝 [STEP 1] Using original query (no HyDE)")
             
-            # ============ STEP 2: Retrieve with the query ============
             logger.info("\n🔍 [STEP 2] Retrieving chunks...")
             retrieved_chunks = self.rag_service.retrieve(
                 query=search_query,  # Use HyDE query if available
@@ -183,7 +178,6 @@ Answer:
                     return f"I don't have any relevant information in the selected documents to answer: '{prompt}'."
                 return "I don't have any relevant information to answer this question."
             
-            # Store HyDE metadata on chunks
             if use_hyde:
                 for chunk in retrieved_chunks:
                     chunk.metadata['hyde_used'] = True
@@ -192,7 +186,6 @@ Answer:
             
             logger.info(f"   ✅ Retrieved {len(retrieved_chunks)} chunks")
             
-            # ============ STEP 3: Build context ============
             logger.info("\n📚 [STEP 3] Building context...")
             context_parts = []
             for chunk in retrieved_chunks:
@@ -206,7 +199,6 @@ Answer:
             
             context_text = "\n\n---\n\n".join(context_parts)
             
-            # Log retrieved chunks with page info
             logger.info(f"📚 Retrieved {len(retrieved_chunks)} chunks:")
             for i, chunk in enumerate(retrieved_chunks[:5], 1):
                 chunk_preview = chunk.page_content[:150].replace('\n', ' ')
@@ -216,7 +208,6 @@ Answer:
                 hyde_used = chunk.metadata.get('hyde_used', False)
                 logger.info(f"   {i}. [Page {page_num}] Score={score} - {chunk_preview}... (from: {filename}) {'[HyDE]' if hyde_used else ''}")
             
-            # ============ STEP 4: Build history ============
             history_text = ""
             if history:
                 history_lines = []
@@ -230,15 +221,13 @@ Answer:
                 history_text = "Previous conversation:\n" + "\n".join(history_lines) + "\n"
                 logger.info(f"📜 Added {len(history)} history messages to prompt")
             
-            # ============ STEP 5: LLM Call 2 - Generate final answer ============
             logger.info("\n🤖 [STEP 4 - LLM Call 2] Generating final answer...")
             formatted_messages = self.prompt.format_messages(
                 context=context_text,
-                input=prompt,  # Use original prompt for the answer
+                input=prompt, 
                 history=history_text
             )
             
-            # Log prompt summary
             logger.info("=" * 80)
             logger.info(f"📊 PROMPT SUMMARY {'(HyDE)' if use_hyde else '(Standard)'}")
             logger.info("=" * 80)
@@ -251,7 +240,6 @@ Answer:
             if file_ids:
                 logger.info(f"   - Filtering to: {file_ids}")
             
-            # Log page distribution
             pages_used = {}
             for chunk in retrieved_chunks:
                 page = chunk.metadata.get('page_number', 'unknown')
@@ -260,7 +248,6 @@ Answer:
                 pages_used[key] = pages_used.get(key, 0) + 1
             logger.info(f"   - Pages used: {pages_used}")
             
-            # Log full prompt (truncated for readability)
             logger.info("-" * 80)
             logger.info("📝 PROMPT CONTENT:")
             logger.info("-" * 80)
@@ -271,11 +258,9 @@ Answer:
                 logger.info(prompt_content)
             logger.info("=" * 80)
             
-            # ============ STEP 6: Generate response ============
             response = await self.llm.ainvoke(formatted_messages)
             answer = response.content.strip()
             
-            # ============ STEP 7: Add source summary if not already cited ============
             if "[Source:" not in answer and "[" not in answer:
                 sources = []
                 seen = set()
@@ -348,7 +333,6 @@ Answer:
                 file_ids=file_ids
             )
             
-            # Build sources
             sources = []
             for i, chunk in enumerate(retrieved_chunks[:10], 1):
                 source = {

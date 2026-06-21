@@ -48,10 +48,8 @@ class DependencyInjection(Module):
         binder.bind(RetrievalService, scope=SingletonScope)
         binder.bind(RagService, scope=SingletonScope)
         
-        # Bind handlers
         binder.bind(DocumentUploadedHandler, scope=SingletonScope)
         binder.bind(PromptAnswerRequestedHandler, scope=SingletonScope)
 
 
-# Create injector instance
 injector = Injector([DependencyInjection()])

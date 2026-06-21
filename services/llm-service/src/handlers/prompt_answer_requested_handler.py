@@ -25,7 +25,6 @@ class PromptAnswerRequestedHandler:
             logger.info(f"   Event ID: {event.event_id[:8]}...")
             logger.info(f"   Prompt: {event.prompt[:150]}...")
             
-            # Get file_ids and history from event
             file_ids = getattr(event, 'file_ids', None)
             history = getattr(event, 'history', None)
             
@@ -34,7 +33,6 @@ class PromptAnswerRequestedHandler:
             if history:
                 logger.info(f"   📜 History: {len(history)} messages")
             
-            # Generate answer using LLM service with file_ids and history
             start_time = time.time()
             answer = await self.llm_service.generate(
                 prompt=event.prompt,
@@ -46,7 +44,6 @@ class PromptAnswerRequestedHandler:
             logger.info(f"✅ [LLM] Answer generated in {elapsed:.2f}s")
             logger.info(f"   Answer length: {len(answer)} characters")
             
-            # Return completion event
             return PromptAnswerCompletedEvent(
                 conversation_id=event.conversation_id,
                 dialogue_id=event.dialogue_id,

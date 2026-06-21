@@ -68,30 +68,25 @@ class ConversationService:
             List of message dicts with 'role' and 'content'
         """
         try:
-            # Get dialogues for this conversation
             dialogues = session.exec(
                 select(Dialogue)
                 .where(Dialogue.conversation_id == uuid.UUID(conversation_id))
                 .order_by(Dialogue.created_at.desc())
-                .limit(max_messages // 2 + 1)  # Get enough for both user and assistant messages
+                .limit(max_messages // 2 + 1)  
             ).all()
             
-            # Build history in chronological order (oldest first)
             history = []
-            for dialogue in reversed(dialogues):  # Reverse to get oldest first
-                # User message
+            for dialogue in reversed(dialogues):  
                 history.append({
                     "role": "user",
                     "content": dialogue.prompt
                 })
-                # Assistant message if exists
                 if dialogue.answer:
                     history.append({
                         "role": "assistant",
                         "content": dialogue.answer
                     })
             
-            # Limit to max_messages
             if len(history) > max_messages:
                 history = history[-max_messages:]
             
@@ -147,14 +142,12 @@ class ConversationService:
             if file_ids:
                 logger.info(f"   Associated file_ids: {file_ids}")
             
-            # Get conversation history if requested
             history = None
             if include_history:
                 history = self._get_conversation_history(session, conversation_id)
                 if history:
                     logger.info(f"   Including {len(history)} messages from history")
             
-            # Publish event to Kafka if producer is available
             if self.kafka_producer:
                 await self._publish_prompt_request(
                     conversation_id=conversation_id,
@@ -206,7 +199,7 @@ class ConversationService:
                 prompt=prompt,
                 user_id=str(conversation.user_id),
                 file_ids=file_ids,
-                history=history  # Include history in the event
+                history=history  
             )
             
             logger.info(f"📤 Publishing Kafka event for dialogue: {dialogue.id}")
@@ -217,7 +210,6 @@ class ConversationService:
             if history:
                 logger.info(f"   History messages: {len(history)}")
             
-            # Produce the event
             result = self.kafka_producer.produce(event=prompt_event, key=conversation_id)
             
             logger.info(f"✅ Kafka event published successfully for dialogue: {dialogue.id}")
@@ -237,7 +229,6 @@ class ConversationService:
                 logger.warning(f"⚠️ Conversation not found: {conversation_id}")
                 raise HTTPException(status_code=404, detail="Conversation not found")
             
-            # Get all dialogues for this conversation
             dialogues = session.exec(
                 select(Dialogue)
                 .where(Dialogue.conversation_id == uuid.UUID(conversation_id))
@@ -340,7 +331,6 @@ class ConversationService:
     ):
         """Get dialogues for a conversation with pagination"""
         try:
-            # Check if conversation exists
             conversation = session.get(Conversation, uuid.UUID(conversation_id))
             if not conversation:
                 logger.warning(f"⚠️ Conversation not found: {conversation_id}")

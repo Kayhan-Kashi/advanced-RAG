@@ -22,7 +22,6 @@ class DocumentService:
     def __init__(self, kafka_producer: Optional[KafkaProducer] = None):
         self.upload_dir = os.getenv('UPLOAD_DIR', './uploads')
         self.kafka_producer = kafka_producer
-        # Create upload directory if it doesn't exist
         os.makedirs(self.upload_dir, exist_ok=True)
     
     async def upload_document(
@@ -34,7 +33,6 @@ class DocumentService:
     ) -> UploadedFile:
         """Upload a document file"""
         try:
-            # Validate file type
             allowed_extensions = ['.pdf', '.docx', '.txt', '.md']
             file_ext = os.path.splitext(file.filename)[1].lower()
             
@@ -44,17 +42,14 @@ class DocumentService:
                     detail=f"File type not allowed. Allowed: {', '.join(allowed_extensions)}"
                 )
             
-            # Generate unique filename
             file_id = uuid.uuid4()
             safe_filename = f"{file_id}{file_ext}"
             file_path = os.path.join(self.upload_dir, safe_filename)
             
-            # Save file
             content = await file.read()
             with open(file_path, "wb") as f:
                 f.write(content)
             
-            # Save to database
             document = UploadedFile(
                 id=file_id,
                 name=file.filename,
@@ -69,7 +64,6 @@ class DocumentService:
             logger.info(f"   Document ID: {document.id}")
             logger.info(f"   File path: {document.path}")
             
-            # Send Kafka event for processing
             if self.kafka_producer:
                 doc_event = DocumentUploadedEvent(
                     document_id=str(document.id),
@@ -143,12 +137,10 @@ class DocumentService:
             if not document:
                 raise HTTPException(status_code=404, detail="Document not found")
             
-            # Delete file from disk
             if os.path.exists(document.path):
                 os.remove(document.path)
                 logger.info(f"🗑️ File deleted from disk: {document.path}")
             
-            # Delete from database
             session.delete(document)
             session.commit()
             
@@ -181,7 +173,6 @@ class DocumentService:
                 "by_category": {}
             }
             
-            # Group by category
             for doc in documents:
                 cat = doc.category
                 stats["by_category"][cat] = stats["by_category"].get(cat, 0) + 1

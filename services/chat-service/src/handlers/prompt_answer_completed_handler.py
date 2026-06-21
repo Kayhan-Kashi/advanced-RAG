@@ -36,7 +36,6 @@ class PromptAnswerCompletedHandler:
             logger.info(f"   Dialogue ID: {event.dialogue_id[:8]}...")
             logger.info(f"   Answer length: {len(event.full_answer)} characters")
             
-            # Step 1: Update dialogue in database
             self.conversation_service.update_dialogue_answer(
                 session=db,
                 dialogue_id=event.dialogue_id,
@@ -44,7 +43,6 @@ class PromptAnswerCompletedHandler:
             )
             logger.info(f"✅ [E-Learning] Dialogue updated in database")
             
-            # Step 2: Send answer via WebSocket to connected user
             success = await connection_manager.send_answer(
                 conversation_id=event.conversation_id,
                 full_answer=event.full_answer
@@ -55,7 +53,6 @@ class PromptAnswerCompletedHandler:
             else:
                 logger.warning(f"⚠️ [E-Learning] WebSocket not available for conversation {event.conversation_id[:8]}...")
             
-            # Return nothing (end of chain)
             return None
             
         except Exception as e:

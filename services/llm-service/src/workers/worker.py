@@ -9,10 +9,10 @@ from injector import Injector
 import logging
 
 from src.dependencies import injector 
-from common.message_bus.bus import MessageBus
+from common.message_bus.bus import MessageBus #type: ignore
 from src.registry import register_handlers, get_consumption_topics, get_event_types
-from common.events.document_uploaded import DocumentUploadedEvent
-from common.events.prompt_answer_requested import PromptAnswerRequestedEvent
+from common.events.document_uploaded import DocumentUploadedEvent #type: ignore
+from common.events.prompt_answer_requested import PromptAnswerRequestedEvent #type: ignore
 from src.handlers.document_uploaded_handler import DocumentUploadedHandler
 from src.handlers.prompt_answer_requested_handler import PromptAnswerRequestedHandler
 
@@ -70,7 +70,7 @@ def get_producer() -> Producer:
         print(f"[llm-service] ✅ Kafka producer connected to {KAFKA_BOOTSTRAP_SERVERS}", flush=True)
     return producer
 
-# llm-service/src/workers/worker.py
+
 async def publish_event(event):
     """Publish event to Kafka"""
     try:
@@ -152,7 +152,6 @@ async def create_consumer() -> Consumer:
     
     consumer = Consumer(conf)
     
-    # Subscribe using string topics
     if SUBSCRIBE_TOPICS:
         consumer.subscribe(SUBSCRIBE_TOPICS)
         print(f"[llm-service] ✅ Consumer subscribed to: {', '.join(SUBSCRIBE_TOPICS)}", flush=True)

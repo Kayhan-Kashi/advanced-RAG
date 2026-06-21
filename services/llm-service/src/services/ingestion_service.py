@@ -38,17 +38,14 @@ class IngestionService:
         self.text_chunker = text_chunker
         self.embedding_model = embedding_model
         
-        # Set paths based on environment
         if os.path.exists("/app"):
             base_dir = "/app"
         else:
             base_dir = "."
         
-        # Index paths - use environment variables or defaults
         self.faiss_index_path = os.getenv("FAISS_INDEX_PATH", os.path.join(base_dir, "faiss_index"))
         self.bm25_index_path = os.getenv("BM25_INDEX_PATH", os.path.join(base_dir, "bm25_index"))
         
-        # Ensure paths are not empty
         if not self.faiss_index_path:
             self.faiss_index_path = os.path.join(base_dir, "faiss_index")
         if not self.bm25_index_path:
@@ -57,27 +54,18 @@ class IngestionService:
         self.bm25_chunks_file = os.path.join(self.bm25_index_path, "chunks.pkl")
         self.bm25_metadata_file = os.path.join(self.bm25_index_path, "metadata.json")
         
-        # State
         self.vector_store = None
         self.bm25_retriever = None
         self.all_chunks = []
         
-        # ============ OPTIMIZED PARAMETERS ============
-        
-        # MMR configuration (for diversity in FAISS retrieval)
         self.mmr_fetch_k = int(os.getenv("MMR_FETCH_K", "200"))
         self.mmr_lambda_mult = float(os.getenv("MMR_LAMBDA_MULT", "0.5"))
         
-        # Chunking parameters (optimized for better retrieval)
         self.default_chunk_size = int(os.getenv("DEFAULT_CHUNK_SIZE", "500"))
         self.default_chunk_overlap = int(os.getenv("DEFAULT_CHUNK_OVERLAP", "50"))
         
-        # FAISS index parameters
         self.faiss_index_type = os.getenv("FAISS_INDEX_TYPE", "flat")
         
-        # ============ END OPTIMIZED PARAMETERS ============
-        
-        # Initialize
         self._ensure_directories()
         self._load_vector_store()
         self._load_bm25_retriever()
@@ -188,7 +176,6 @@ class IngestionService:
             self.vector_store.add_documents(chunks)
             logger.info(f"✅ Added {len(chunks)} chunks to FAISS (total: {self.vector_store.index.ntotal})")
         
-        # Save both
         self.save_vector_store()
         self.save_bm25_retriever()
     
@@ -217,7 +204,6 @@ class IngestionService:
         Returns:
             List of created chunks with page metadata
         """
-        # Use optimized defaults if not provided
         if chunk_size is None:
             chunk_size = self.default_chunk_size
         if chunk_overlap is None:
@@ -227,14 +213,11 @@ class IngestionService:
         logger.info(f"   Chunk size: {chunk_size}, overlap: {chunk_overlap}")
         logger.info(f"   Chunk by page: {chunk_by_page}")
         
-        # Validate file exists
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
         
-        # ============ LOAD WITH PAGE METADATA ============
         self.doc_loader.load_pdf(file_path=file_path)
         
-        # Get page information
         pages = self.doc_loader.get_pages()
         total_pages = self.doc_loader.get_page_count()
         page_documents = self.doc_loader.get_page_documents()
@@ -244,29 +227,24 @@ class IngestionService:
         
         logger.info(f"   Loaded: {total_pages} pages")
         
-        # ============ PROCESS EACH PAGE ============
         all_chunks = []
         
         if chunk_by_page:
-            # Option 1: Chunk each page separately (preserves page boundaries)
             all_chunks = self._process_pages_separately(
                 page_documents, document_id, filename, filetype, 
                 chunk_size, chunk_overlap, total_pages
             )
         else:
-            # Option 2: Combine all pages and chunk (page metadata may be lost or approximated)
             all_chunks = self._process_pages_combined(
                 page_documents, document_id, filename, filetype,
                 chunk_size, chunk_overlap, total_pages
             )
         
-        # ============ STORE ============
         if all_chunks:
             self.store_chunks(all_chunks)
             logger.info(f"✅ Document processed: {filename}")
             logger.info(f"   Total chunks: {len(all_chunks)}")
             
-            # Log sample chunk metadata
             sample = all_chunks[0]
             logger.info(f"   Sample: Page {sample.metadata.get('page_number')}/{sample.metadata.get('total_pages')} "
                        f"- {sample.metadata.get('filename')}")
@@ -293,13 +271,11 @@ class IngestionService:
             page_num = page_doc.metadata.get('page_number', 1)
             page_text = page_doc.page_content
             
-            # Preprocess page text
             preprocessed = self.text_preprocessor.preprocess(page_text)
             if not preprocessed:
                 logger.warning(f"   Skipping page {page_num} - no text after preprocessing")
                 continue
             
-            # Create document with page metadata
             doc = Document(
                 page_content=preprocessed,
                 metadata={
@@ -307,8 +283,8 @@ class IngestionService:
                     "document_id": document_id,
                     "filename": filename,
                     "filetype": filetype,
-                    "page_number": page_num,  # ✅ Page number preserved
-                    "total_pages": total_pages,  # ✅ Total pages
+                    "page_number": page_num,  
+                    "total_pages": total_pages,
                     "chunk_size": chunk_size,
                     "chunk_overlap": chunk_overlap,
                     "page_char_count": len(preprocessed),
@@ -317,21 +293,19 @@ class IngestionService:
                 }
             )
             
-            # Chunk this page
             page_chunks = self.text_chunker.chunk(
                 doc,
                 chunk_size=chunk_size,
                 chunk_overlap=chunk_overlap
             )
             
-            # Add additional metadata to each chunk
             for i, chunk in enumerate(page_chunks):
                 chunk.metadata.update({
                     'document_id': document_id,
                     'filename': filename,
                     'filetype': filetype,
-                    'page_number': page_num,  # ✅ Page number on each chunk
-                    'total_pages': total_pages,  # ✅ Total pages on each chunk
+                    'page_number': page_num,  
+                    'total_pages': total_pages,  
                     'chunk_index_in_page': i,
                     'total_chunks_in_page': len(page_chunks),
                     'has_page_metadata': True
@@ -339,7 +313,6 @@ class IngestionService:
             
             all_chunks.extend(page_chunks)
         
-        # Update global chunk indices
         for i, chunk in enumerate(all_chunks):
             chunk.metadata['chunk_index'] = i
             chunk.metadata['total_chunks'] = len(all_chunks)
@@ -362,15 +335,13 @@ class IngestionService:
         Combine all pages and chunk together.
         Page metadata is approximated based on position.
         """
-        # Combine all page texts with page markers
         combined_text = ""
-        page_markers = []  # (page_num, start_pos, end_pos)
+        page_markers = [] 
         
         for page_doc in page_documents:
             page_num = page_doc.metadata.get('page_number', 1)
             page_text = page_doc.page_content
             
-            # Preprocess
             preprocessed = self.text_preprocessor.preprocess(page_text)
             if not preprocessed:
                 continue
@@ -383,7 +354,6 @@ class IngestionService:
         if not combined_text:
             raise ValueError("No text after preprocessing")
         
-        # Create combined document
         combined_doc = Document(
             page_content=combined_text,
             metadata={
@@ -396,28 +366,23 @@ class IngestionService:
             }
         )
         
-        # Chunk the combined text
         chunks = self.text_chunker.chunk(
             combined_doc,
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap
         )
         
-        # Determine which page each chunk belongs to
         for i, chunk in enumerate(chunks):
             chunk_start = chunk.metadata.get('start_index', 0)
             chunk_end = chunk_start + len(chunk.page_content)
             
-            # Find which page this chunk belongs to
             page_num = 1
             pages_covered = []
             
             for p_num, start_pos, end_pos in page_markers:
-                # Check if chunk overlaps with this page
                 if chunk_start <= end_pos and chunk_end >= start_pos:
                     pages_covered.append(p_num)
             
-            # Use the first page if chunk spans multiple pages
             if pages_covered:
                 page_num = pages_covered[0]
             
@@ -425,8 +390,8 @@ class IngestionService:
                 'document_id': document_id,
                 'filename': filename,
                 'filetype': filetype,
-                'page_number': page_num,  # Approximated page number
-                'pages_covered': pages_covered,  # All pages this chunk spans
+                'page_number': page_num,  
+                'pages_covered': pages_covered, 
                 'total_pages': total_pages,
                 'chunk_index': i,
                 'total_chunks': len(chunks),
@@ -439,7 +404,6 @@ class IngestionService:
         
         return chunks
     
-    # ============ PAGE-AWARE RETRIEVAL METHODS ============
     
     def get_chunks_by_page(self, document_id: str, page_number: int) -> List[Document]:
         """
@@ -485,6 +449,7 @@ class IngestionService:
         logger.info(f"📄 Retrieved {len(page_chunks)} chunks from pages {start_page}-{end_page}")
         return page_chunks
     
+    
     def get_document_pages(self, document_id: str) -> List[int]:
         """
         Get all page numbers for a document.
@@ -504,6 +469,7 @@ class IngestionService:
         logger.info(f"📄 Document {document_id} has {len(pages)} pages")
         return pages
     
+    
     def get_page_count(self, document_id: str) -> int:
         """
         Get total number of pages for a document.
@@ -519,6 +485,7 @@ class IngestionService:
             return chunks[0].metadata.get('total_pages', 0)
         return 0
     
+    
     def get_chunks_by_file_ids(self, file_ids: List[str]) -> List[Document]:
         """Retrieve chunks belonging to specific file IDs"""
         if not self.all_chunks:
@@ -533,21 +500,25 @@ class IngestionService:
         logger.info(f"📁 Filtered {len(filtered_chunks)} chunks from {len(file_ids)} files")
         return filtered_chunks
     
+    
     def get_all_chunks(self) -> List[Document]:
         """Get all indexed chunks"""
         return self.all_chunks
+    
     
     def get_vector_store(self):
         """Get FAISS vector store"""
         return self.vector_store
     
+    
     def get_bm25_retriever(self):
         """Get BM25 retriever"""
         return self.bm25_retriever
     
+    
     def get_stats(self) -> Dict[str, Any]:
         """Get ingestion statistics"""
-        # Count pages across all documents
+
         pages_by_doc = {}
         for chunk in self.all_chunks:
             doc_id = chunk.metadata.get('document_id')
@@ -585,6 +556,7 @@ class IngestionService:
                 "pages_per_document": {k: len(v) for k, v in pages_by_doc.items()}
             }
         }
+    
     
     def clear_indexes(self):
         """Clear all indexes"""

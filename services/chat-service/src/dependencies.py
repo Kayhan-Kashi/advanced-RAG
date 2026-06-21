@@ -1,10 +1,9 @@
-# elearning-service/src/dependencies.py
 from __future__ import annotations
 import os
 import logging
 
 from injector import Binder, Module, SingletonScope, Injector
-from common.kafka.producer import KafkaProducer, get_producer
+from common.kafka.producer import KafkaProducer, get_producer #type: ignore
 from services.conversation_service import ConversationService
 from services.document_service import DocumentService
 
@@ -25,9 +24,8 @@ class DependencyInjection(Module):
         logger.info("Configuring DI bindings...")
         binder.bind(KafkaProducer, to=get_kafka_producer, scope=SingletonScope)
         binder.bind(ConversationService, scope=SingletonScope)
-        binder.bind(DocumentService, scope=SingletonScope)  # This must be here
+        binder.bind(DocumentService, scope=SingletonScope)  
         logger.info("DI bindings configured")
 
 
-# Create injector instance
 injector = Injector([DependencyInjection()])

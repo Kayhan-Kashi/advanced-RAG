@@ -17,7 +17,6 @@ from consumers.chat_consumer import ChatConsumer
 from dependencies import DependencyInjection
 import asyncio
 
-# Global consumer instance
 chat_consumer = None
 
 
@@ -25,7 +24,6 @@ chat_consumer = None
 async def lifespan(app: FastAPI):
     global chat_consumer
     
-    # Startup
     print("🚀 Starting E-Learning Service...")
     
     # Initialize database
@@ -36,7 +34,6 @@ async def lifespan(app: FastAPI):
     bootstrap_servers = os.getenv('KAFKA_BOOTSTRAP_SERVERS', 'localhost:9092')
     print(f"📡 Kafka bootstrap servers: {bootstrap_servers}")
     
-    # Initialize Kafka producer - USE THE ENV VAR HERE TOO!
     get_producer(bootstrap_servers=bootstrap_servers)
     print("✅ Kafka producer ready")
     
@@ -58,7 +55,6 @@ async def lifespan(app: FastAPI):
     
     yield
     
-    # Shutdown
     print("🛑 Shutting down...")
     if chat_consumer:
         chat_consumer.stop()
@@ -68,7 +64,6 @@ async def lifespan(app: FastAPI):
     print("✅ Application shut down")
 
 
-# Create injector
 injector = Injector([DependencyInjection()])
 
 app = FastAPI(
@@ -78,11 +73,9 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Add injector middleware
 app.add_middleware(InjectorMiddleware, injector=injector)
 attach_injector(app, injector)
 
-# Configure CORS - Allow all origins for development
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -92,10 +85,8 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
-# Include REST routes
 app.include_router(conversation_router)
 
-# Include WebSocket routes
 app.include_router(websocket_router)
 
 app.include_router(document_router)
@@ -109,7 +100,6 @@ def health_check():
     }
 
 
-# OPTIONS handler for preflight requests
 @app.options("/{rest_of_path:path}")
 async def options_handler():
     return {"message": "OK"}

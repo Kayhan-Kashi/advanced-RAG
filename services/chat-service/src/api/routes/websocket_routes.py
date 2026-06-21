@@ -10,7 +10,6 @@ from api.websocket.manager import connection_manager
 from database.sqlite_session import get_session
 from services.conversation_service import ConversationService
 
-# Configure logger
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["websocket"])
@@ -28,25 +27,20 @@ async def websocket_endpoint(
     logger.info(f"🔌 WebSocket connection attempt from user: {user_id}")
     
     try:
-        # Accept the connection
         await websocket.accept()
         logger.info(f"✅ WebSocket accepted for user: {user_id}")
         
-        # Register the connection
         await connection_manager.connect(websocket, user_id)
         logger.info(f"📝 User {user_id} registered in connection manager")
         
-        # Keep the connection alive and handle messages
         while True:
             try:
-                # Receive message from client
                 data = await websocket.receive_json()
                 msg_type = data.get("type")
                 
                 logger.info(f"📨 Received message from user {user_id}: {msg_type}")
                 logger.debug(f"   Message data: {data}")
                 
-                # Handle ping/pong
                 if msg_type == "ping":
                     await websocket.send_json({
                         "type": "pong",
@@ -54,7 +48,6 @@ async def websocket_endpoint(
                     })
                     logger.debug(f"🏓 Sent pong to user {user_id}")
                 
-                # Handle chat messages
                 elif msg_type == "chat":
                     conversation_id = data.get("conversation_id")
                     prompt = data.get("prompt")
@@ -64,23 +57,20 @@ async def websocket_endpoint(
                     logger.info(f"   Prompt: {prompt[:100]}...")
                     logger.info(f"   File IDs: {file_ids}")
                     
-                    # Register conversation for WebSocket routing
                     connection_manager.register_conversation(conversation_id, user_id)
                     
-                    # Create dialogue with file_ids - THIS IS THE KEY CHANGE
                     dialogue_id = await service.create_dialogue(
                         session=db,
                         conversation_id=conversation_id,
                         prompt=prompt,
                         answer=None,
-                        file_ids=file_ids  # ← Pass file_ids to service
+                        file_ids=file_ids  
                     )
                     
                     logger.info(f"📝 Dialogue created: {dialogue_id}")
                     logger.info(f"   Associated file IDs: {file_ids}")
                     logger.info(f"📤 Kafka event published by ConversationService")
                     
-                    # Send acknowledgment
                     await websocket.send_json({
                         "type": "ack",
                         "conversation_id": conversation_id,
@@ -90,11 +80,7 @@ async def websocket_endpoint(
                     })
                     logger.debug(f"✅ Sent acknowledgment to user {user_id}")
                     
-                    # Note: The answer will come from the ChatConsumer 
-                    # (which listens to prompt-answer-completed topic)
-                    # and will be sent via connection_manager.send_answer()
                 
-                # Handle unknown message types
                 else:
                     logger.warning(f"⚠️ Unknown message type from user {user_id}: {msg_type}")
                     await websocket.send_json({

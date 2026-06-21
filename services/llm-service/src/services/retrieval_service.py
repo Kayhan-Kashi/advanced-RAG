@@ -12,7 +12,6 @@ from src.services.ingestion_service import IngestionService
 
 logger = logging.getLogger(__name__)
 
-# Try to import reranker
 try:
     from FlagEmbedding import FlagReranker
     RERANKER_AVAILABLE = True
@@ -38,44 +37,32 @@ class RetrievalService:
         self.ingestion = ingestion_service
         self.reranker = None
         
-        # ============ OPTIMIZED RETRIEVAL PARAMETERS ============
-        
-        # MMR configuration (optimized for better diversity)
         self.mmr_fetch_k = int(os.getenv("MMR_FETCH_K", "200"))
         self.mmr_lambda_mult = float(os.getenv("MMR_LAMBDA_MULT", "0.5"))
         
-        # Ensemble weights (optimized for better balance)
         self.default_faiss_weight = float(os.getenv("FAISS_WEIGHT", "0.6"))
         self.default_bm25_weight = float(os.getenv("BM25_WEIGHT", "0.4"))
         
-        # Retrieval counts (optimized for better coverage)
         self.default_faiss_k = int(os.getenv("FAISS_RETRIEVAL_K", "100"))
         self.default_bm25_k = int(os.getenv("BM25_RETRIEVAL_K", "100"))
         
-        # Reranking configuration
         self.rerank_top_k = int(os.getenv("RERANK_TOP_K", "10"))
         self.enable_reranker = os.getenv("ENABLE_RERANKER", "true").lower() == "true"
         
-        # Reranker model path
         self.reranker_model_path = os.getenv(
             "RERANKER_MODEL_PATH", 
             "/app/models/BAAI/models--BAAI--bge-reranker-v2-m3"
         )
         
-        # ============ RERANKER OPTIMIZATION SETTINGS ============
         self.reranker_batch_size = int(os.getenv("RERANKER_BATCH_SIZE", "32"))  # Batch processing
         self.reranker_use_fp16 = os.getenv("RERANKER_USE_FP16", "true").lower() == "true"
         self.reranker_cache_size = int(os.getenv("RERANKER_CACHE_SIZE", "1000"))  # LRU cache
         self.reranker_max_length = int(os.getenv("RERANKER_MAX_LENGTH", "512"))  # Truncate long texts
         self.reranker_skip_scores = os.getenv("RERANKER_SKIP_SCORES", "false").lower() == "true"  # Skip storing scores
         
-        # ============ END OPTIMIZED PARAMETERS ============
-        
-        # Load reranker
         if self.enable_reranker:
             self._load_reranker()
         
-        # Cache for query-document scores (simple LRU)
         self._score_cache = {}
         self._cache_max_size = self.reranker_cache_size
         
@@ -94,7 +81,6 @@ class RetrievalService:
             return
         
         try:
-            # Suppress tokenizer warnings
             logging.getLogger("transformers.tokenization_utils_base").setLevel(logging.ERROR)
             warnings.filterwarnings("ignore", category=UserWarning, module="transformers")
             
@@ -105,7 +91,6 @@ class RetrievalService:
                 self.reranker = None
                 return
             
-            # Check for snapshots (HuggingFace cache format)
             snapshots_path = os.path.join(base_path, 'snapshots')
             model_path = base_path
             
@@ -115,11 +100,9 @@ class RetrievalService:
                 if snapshots:
                     model_path = os.path.join(snapshots_path, snapshots[0])
             
-            # Load with optimizations
             self.reranker = FlagReranker(
                 model_path, 
                 use_fp16=self.reranker_use_fp16,
-                # Additional optimizations
                 device="cuda" if self.reranker_use_fp16 else "cpu",
             )
             
@@ -131,7 +114,6 @@ class RetrievalService:
             logger.warning(f"Failed to load reranker: {e}")
             self.reranker = None
     
-    # ============ CORE RETRIEVAL ============
     
     def retrieve(
         self, 
@@ -146,34 +128,29 @@ class RetrievalService:
         2. Optional file filtering
         3. Reranking (cross-encoder) - optimized for speed
         """
-        # Determine if reranker should be used
+
         if use_reranker is None:
             use_reranker = self.enable_reranker and self.reranker is not None
         
-        # Get more candidates for better reranking
         candidate_k = k * 3 if use_reranker else k
         if file_ids:
             candidate_k = candidate_k * 2
         
-        # Step 1: Get results from FAISS and BM25
         faiss_results = self._faiss_search(query, candidate_k)
         bm25_results = self._bm25_search(query, candidate_k)
         
-        # Step 2: Filter by file_ids if provided
         if file_ids:
             file_id_set = set(str(fid) for fid in file_ids)
             faiss_results = [d for d in faiss_results if str(d.metadata.get('document_id')) in file_id_set]
             bm25_results = [d for d in bm25_results if str(d.metadata.get('document_id')) in file_id_set]
             logger.info(f"📁 Filtered to {len(faiss_results)} FAISS, {len(bm25_results)} BM25 results")
         
-        # Step 3: Combine and deduplicate
         combined = self._combine_results(faiss_results, bm25_results)
         logger.info(f"📊 Combined {len(combined)} unique results")
         
         if not combined:
             return []
         
-        # Step 4: Rerank (cross-encoder) if enabled - OPTIMIZED
         if use_reranker and self.reranker:
             combined = self._rerank_optimized(query, combined, top_k=k)
         else:
@@ -245,36 +222,32 @@ class RetrievalService:
             return chunks[:top_k]
         
         try:
-            # Limit number of chunks to rerank
             rerank_limit = min(len(chunks), self.rerank_top_k * 3)
             chunks_to_rerank = chunks[:rerank_limit]
             
-            # Prepare texts with truncation for speed
             texts = []
             for chunk in chunks_to_rerank:
                 content = chunk.page_content
-                # Truncate to max length for faster processing
+                
                 if len(content) > self.reranker_max_length:
                     content = content[:self.reranker_max_length]
                 texts.append(content)
+
             
-            # Check cache for scores
             cached_scores = []
             chunks_to_compute = []
             chunks_to_compute_indices = []
             
             for i, text in enumerate(texts):
-                cache_key = f"{query[:100]}:{text[:100]}"  # Short key for speed
+                cache_key = f"{query[:100]}:{text[:100]}" 
                 if cache_key in self._score_cache:
                     cached_scores.append(self._score_cache[cache_key])
                 else:
                     chunks_to_compute.append(text)
                     chunks_to_compute_indices.append(i)
-                    cached_scores.append(None)  # Placeholder
+                    cached_scores.append(None)  
             
-            # Compute scores in batches for speed
             if chunks_to_compute:
-                # Process in batches
                 batch_size = self.reranker_batch_size
                 computed_scores = []
                 
@@ -282,10 +255,8 @@ class RetrievalService:
                     batch_texts = chunks_to_compute[i:i + batch_size]
                     batch_pairs = [(query, text) for text in batch_texts]
                     
-                    # Compute scores for batch
                     batch_scores = self.reranker.compute_score(batch_pairs)
                     
-                    # Handle single score vs list
                     if isinstance(batch_scores, float):
                         batch_scores = [batch_scores]
                     elif not isinstance(batch_scores, list):
@@ -293,28 +264,22 @@ class RetrievalService:
                     
                     computed_scores.extend(batch_scores)
                 
-                # Update cache with computed scores
                 for idx, score in zip(chunks_to_compute_indices, computed_scores):
                     cache_key = f"{query[:100]}:{texts[idx][:100]}"
                     self._score_cache[cache_key] = score
                     
-                    # Limit cache size
                     if len(self._score_cache) > self._cache_max_size:
-                        # Remove oldest entry (simple)
                         self._score_cache.pop(next(iter(self._score_cache)))
                     
                     cached_scores[idx] = score
             
-            # Pair chunks with scores
             ranked = list(zip(chunks_to_rerank, cached_scores))
             ranked.sort(key=lambda x: x[1], reverse=True)
             
-            # Store scores on chunks (optionally skip for speed)
             if not self.reranker_skip_scores:
                 for chunk, score in ranked:
                     chunk.metadata['reranker_score'] = score
             
-            # Log only top scores (limited logging for speed)
             logger.info(f"🎯 Reranked {len(ranked)} chunks:")
             for i, (chunk, score) in enumerate(ranked[:3], 1):  # Only log top 3 for speed
                 preview = chunk.page_content[:100].replace('\n', ' ')
@@ -327,7 +292,6 @@ class RetrievalService:
             logger.error(f"Reranking failed: {e}")
             return chunks[:top_k]
     
-    # ============ ADDITIONAL RETRIEVAL METHODS ============
     
     def search_with_ensemble(
         self,
@@ -359,6 +323,7 @@ class RetrievalService:
         results = ensemble.invoke(query)
         return results[:k]
     
+    
     def _get_faiss_retriever(self, k: int = 100):
         """Get FAISS retriever with optimized MMR"""
         vector_store = self.ingestion.get_vector_store()
@@ -374,6 +339,7 @@ class RetrievalService:
             }
         )
     
+    
     def _get_bm25_retriever(self, k: int = 100):
         """Get BM25 retriever"""
         all_chunks = self.ingestion.get_all_chunks()
@@ -384,7 +350,6 @@ class RetrievalService:
         bm25.k = k
         return bm25
     
-    # ============ UTILITY ============
     
     def get_stats(self) -> Dict[str, Any]:
         """Get retrieval statistics"""
@@ -410,6 +375,7 @@ class RetrievalService:
                 "top_k": self.rerank_top_k
             }
         }
+    
     
     def clear_cache(self):
         """Clear reranker score cache"""

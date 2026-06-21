@@ -27,10 +27,8 @@ class DocumentUploadedHandler:
             logger.info(f"   Filename: {event.filename}")
             logger.info(f"   File type: {event.filetype}")
             
-            # Get the file path
             file_path = f"/app/uploads/{event.document_id}{event.filetype}"
             
-            # Process document (prepare, chunk, and index)
             start_time = time.time()
             chunks = self.ingestion_service.ingest_document(
                 file_path=file_path,
@@ -45,7 +43,6 @@ class DocumentUploadedHandler:
             logger.info(f"✅ [LLM] Document ingested in {elapsed:.2f}s")
             logger.info(f"   Created {len(chunks)} chunks")
             
-            # Return completion event (worker will publish it)
             return DocumentEmbeddingDoneEvent(
                 document_id=event.document_id,
                 filetype=event.filetype,
