@@ -1,4 +1,3 @@
-# llm-service/src/handlers/document_uploaded_handler.py
 import time
 import logging
 from typing import Optional, Any
