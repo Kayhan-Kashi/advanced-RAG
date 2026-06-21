@@ -1,4 +1,3 @@
-# services/retrieval_service.py
 import logging
 import os
 import warnings
@@ -281,7 +280,7 @@ class RetrievalService:
                     chunk.metadata['reranker_score'] = score
             
             logger.info(f"🎯 Reranked {len(ranked)} chunks:")
-            for i, (chunk, score) in enumerate(ranked[:3], 1):  # Only log top 3 for speed
+            for i, (chunk, score) in enumerate(ranked[:3], 1): 
                 preview = chunk.page_content[:100].replace('\n', ' ')
                 filename = chunk.metadata.get('filename', 'unknown')
                 logger.info(f"   {i}. Score={score:.4f} - {preview}... (from: {filename})")

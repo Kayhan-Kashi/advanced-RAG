@@ -1,4 +1,3 @@
-# services/rag_service.py
 import logging
 from typing import List, Optional, Dict, Any
 from injector import inject
