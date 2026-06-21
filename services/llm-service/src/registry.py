@@ -1,10 +1,9 @@
-# llm-service/src/registry.py
 """
 Handler Registry - Registers all handlers for this service
 """
 
 import logging
-from common.message_bus.interfaces import MessageBus
+from common.message_bus.interfaces import MessageBus #type: ignore
 from src.dependencies import injector, EVENT_HANDLER_MAP
 
 logger = logging.getLogger(__name__)

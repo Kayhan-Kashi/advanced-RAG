@@ -1,10 +1,9 @@
-# llm-service/src/dependencies.py
 from __future__ import annotations
 import os
 
 from injector import Binder, Module, SingletonScope, Injector
-from common.kafka.producer import KafkaProducer, get_producer
-from common.events import PromptAnswerRequestedEvent, DocumentUploadedEvent
+from common.kafka.producer import KafkaProducer, get_producer #type: ignore
+from common.events import PromptAnswerRequestedEvent, DocumentUploadedEvent #type: ignore
 from src.services.llm_service import LLMService
 from src.core.embedding_model import EmbeddingModel
 from src.core.document_loader import DocumentLoader

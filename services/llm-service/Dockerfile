@@ -1,4 +1,3 @@
-# services/llm-service/Dockerfile
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -21,26 +20,12 @@ RUN pip install langchain-community --index-url ${PIP_INDEX_URL}
 RUN pip install rank_bm25 langchain-community scipy --index-url ${PIP_INDEX_URL}
 RUN pip install FlagEmbedding --index-url ${PIP_INDEX_URL}
 
-# ENV HF_HUB_OFFLINE=1
-# ENV TRANSFORMERS_OFFLINE=1
-# ENV HF_DATASETS_OFFLINE=1
-# ENV HF_HUB_DISABLE_SYMLINKS_WARNING=1
 
-# ENV MODEL_NAME="jinaai/jina-embeddings-v3"
-# # Define the directory INSIDE the container where the model will be loaded from
-# ENV MODEL_DIR="/app/models/jina-embeddings-v3"
-
-
-
-# Copy shared module
 COPY shared/ ./shared/
 RUN pip install ./shared --index-url ${PIP_INDEX_URL}
 
-# Copy LLM service - note: this copies contents of src/ to /app/src/
 COPY services/llm-service/ ./
-# COPY services/llm-service/models/jina-embeddings-v3 /app/models/jina-embeddings-v3
 
 ENV PYTHONPATH=/app
 
-# Use dot notation for module path: src.workers.worker
 CMD ["python", "-m", "src.workers.worker"]
