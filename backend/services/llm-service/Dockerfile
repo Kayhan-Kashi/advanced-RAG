@@ -21,10 +21,10 @@ RUN pip install rank_bm25 langchain-community scipy --index-url ${PIP_INDEX_URL}
 RUN pip install FlagEmbedding --index-url ${PIP_INDEX_URL}
 
 
-COPY shared/ ./shared/
+COPY backend/shared/ ./shared/
 RUN pip install ./shared --index-url ${PIP_INDEX_URL}
 
-COPY services/llm-service/ ./
+COPY backend/services/llm-service/ ./
 
 ENV PYTHONPATH=/app
 

@@ -1,5 +1,4 @@
-# common/events/document_embedding_done.py
-from common.events.base_event import BaseEvent
+from .base_event import BaseEvent
 
 
 class DocumentEmbeddingDoneEvent(BaseEvent):

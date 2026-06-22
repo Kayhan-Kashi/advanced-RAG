@@ -1,4 +1,4 @@
-from common.kafka.producer import (
+from .producer import (
     KafkaProducer,
     get_producer,
     shutdown_producer,

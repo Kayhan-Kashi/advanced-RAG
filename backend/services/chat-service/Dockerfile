@@ -10,10 +10,10 @@ RUN pip install -r requirements.txt --index-url ${PIP_INDEX_URL}
 
 RUN pip install python-multipart --index-url ${PIP_INDEX_URL}
 
-COPY shared/ ./shared/
+COPY backend/shared/ ./shared/
 RUN pip install ./shared --index-url ${PIP_INDEX_URL}
 
-COPY services/chat-service/src/ ./
+COPY backend/services/chat-service/src/ ./
 
 ENV PYTHONPATH=/app
 RUN mkdir -p /app/data

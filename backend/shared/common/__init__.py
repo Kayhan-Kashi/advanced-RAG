@@ -1,5 +1,5 @@
-from common.events import BaseEvent, PromptAnswerRequestedEvent
-from common.kafka import KafkaProducer, get_producer, shutdown_producer
+from .events import BaseEvent, PromptAnswerRequestedEvent
+from .kafka import KafkaProducer, get_producer, shutdown_producer
 
 __version__ = "1.0.0"
 

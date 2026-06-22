@@ -45,12 +45,12 @@ models/
 *.pth
 
 # Node.js / React
-rag-react-app/node_modules/
-rag-react-app/.env
-rag-react-app/build/
-rag-react-app/dist/
-rag-react-app/.next/
-rag-react-app/coverage/
+frontend/node_modules/
+frontend/.env
+frontend/build/
+frontend/dist/
+frontend/.next/
+frontend/coverage/
 
 # Environment files
 .env
@@ -69,3 +69,4 @@ Thumbs.db
 
 uploaded_files/
 data/
+data/uploaded_files

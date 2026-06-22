@@ -1,4 +1,3 @@
-# shared/common/kafka/producer.py
 import json
 import logging
 from typing import Optional, Dict, Any

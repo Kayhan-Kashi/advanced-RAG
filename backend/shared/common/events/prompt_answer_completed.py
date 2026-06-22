@@ -1,5 +1,4 @@
-# shared/common/events/prompt_answer_completed.py
-from common.events.base_event import BaseEvent
+from .base_event import BaseEvent
 
 
 class PromptAnswerCompletedEvent(BaseEvent):

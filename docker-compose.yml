@@ -50,7 +50,7 @@ services:
   rag-chat-service:
     build:
       context: .
-      dockerfile: services/chat-service/Dockerfile
+      dockerfile: backend/services/chat-service/Dockerfile
     container_name: rag-chat-service
     ports:
       - "8000:8000"
@@ -60,7 +60,7 @@ services:
       - ENVIRONMENT=production
     volumes:
       - ./data:/app/data
-      - ./uploaded_files:/app/uploads 
+      - ./data/uploaded_files:/app/uploads 
     depends_on:
       - kafka
     networks:
@@ -71,7 +71,7 @@ services:
   rag-llm-service:
       build:
         context: .
-        dockerfile: services/llm-service/Dockerfile
+        dockerfile: backend/services/llm-service/Dockerfile
       container_name: rag-llm-service
       environment:
         - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
@@ -90,7 +90,7 @@ services:
         - HF_HOME=/app/models/hf_cache
         - USE_HYDE=False
       volumes:
-        - ./uploaded_files:/app/uploads 
+        - ./data/uploaded_files:/app/uploads 
         - ./models/snapshot/jina-embeddings-v3:/app/models/snapshot/jina-embeddings-v3
         - ./models/hf_cache:/app/models/hf_cache
         - ./models/faiss_index:/app/faiss_index
@@ -105,7 +105,7 @@ services:
 
   react-app:
     build:
-      context: ./rag-react-app
+      context: ./frontend
       dockerfile: Dockerfile
     container_name: rag-react-app
     ports:

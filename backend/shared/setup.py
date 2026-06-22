@@ -1,4 +1,3 @@
-# D:\Projects\python\LLM class exercise\4-Prompt and RAG\RAG-demo-app\shared\setup.py
 from setuptools import setup, find_packages
 
 setup(

@@ -1,7 +1,6 @@
-# common/events/prompt_answer_requested.py
 from typing import List, Optional, Dict, Any
 
-from common.events.base_event import BaseEvent
+from .base_event import BaseEvent
 
 
 class PromptAnswerRequestedEvent(BaseEvent):

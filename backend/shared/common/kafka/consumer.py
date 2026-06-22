@@ -1,10 +1,9 @@
-# shared/common/kafka/consumer.py
 import json
 import logging
 import asyncio
 from typing import List, Dict, Any
 from confluent_kafka import Consumer as ConfluentConsumer
-from common.message_bus.interfaces import MessageBus
+from shared.common.message_bus.interfaces import MessageBus
 
 logger = logging.getLogger(__name__)
 
