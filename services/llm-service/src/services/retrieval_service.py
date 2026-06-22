@@ -1,6 +1,6 @@
+# services/retrieval_service.py
 import logging
 import os
-import warnings
 from typing import List, Optional, Dict, Any
 from injector import inject
 from langchain_community.retrievers import BM25Retriever
@@ -8,15 +8,9 @@ from langchain_classic.retrievers import EnsembleRetriever
 from langchain_core.documents import Document
 
 from src.services.ingestion_service import IngestionService
+from src.core.reranker import RerankerModel
 
 logger = logging.getLogger(__name__)
-
-try:
-    from FlagEmbedding import FlagReranker
-    RERANKER_AVAILABLE = True
-except ImportError:
-    RERANKER_AVAILABLE = False
-    logger.warning("FlagEmbedding not installed. Reranking will be disabled.")
 
 
 class RetrievalService:
@@ -32,129 +26,42 @@ class RetrievalService:
     """
     
     @inject
-    def __init__(self, ingestion_service: IngestionService):
+    def __init__(
+        self, 
+        ingestion_service: IngestionService,
+        reranker_model: RerankerModel
+    ):
         self.ingestion = ingestion_service
-        self.reranker = None
+        self.reranker_model = reranker_model
         
+        # MMR configuration
         self.mmr_fetch_k = int(os.getenv("MMR_FETCH_K", "200"))
         self.mmr_lambda_mult = float(os.getenv("MMR_LAMBDA_MULT", "0.5"))
         
+        # Ensemble weights
         self.default_faiss_weight = float(os.getenv("FAISS_WEIGHT", "0.6"))
         self.default_bm25_weight = float(os.getenv("BM25_WEIGHT", "0.4"))
         
+        # Retrieval counts
         self.default_faiss_k = int(os.getenv("FAISS_RETRIEVAL_K", "100"))
         self.default_bm25_k = int(os.getenv("BM25_RETRIEVAL_K", "100"))
         
+        # Reranking configuration
         self.rerank_top_k = int(os.getenv("RERANK_TOP_K", "10"))
         self.enable_reranker = os.getenv("ENABLE_RERANKER", "true").lower() == "true"
         
-        self.reranker_model_path = os.getenv(
-            "RERANKER_MODEL_PATH", 
-            "/app/models/BAAI/models--BAAI--bge-reranker-v2-m3"
-        )
-        
-        self.reranker_batch_size = int(os.getenv("RERANKER_BATCH_SIZE", "32"))
-        self.reranker_use_fp16 = os.getenv("RERANKER_USE_FP16", "true").lower() == "true"
-        self.reranker_cache_size = int(os.getenv("RERANKER_CACHE_SIZE", "1000"))
-        self.reranker_max_length = int(os.getenv("RERANKER_MAX_LENGTH", "512"))
-        self.reranker_skip_scores = os.getenv("RERANKER_SKIP_SCORES", "false").lower() == "true"
-        
-        if self.enable_reranker:
-            self._load_reranker()
-        
-        self._score_cache = {}
-        self._cache_max_size = self.reranker_cache_size
+        # Score cache (using reranker_model's cache)
+        self._score_cache = self.reranker_model._score_cache
+        self._cache_max_size = self.reranker_model._cache_max_size
         
         logger.info("✅ RetrievalService initialized")
-        logger.info(f"   Reranker available: {self.reranker is not None}")
-        logger.info(f"   Reranker batch size: {self.reranker_batch_size}")
-        logger.info(f"   Reranker FP16: {self.reranker_use_fp16}")
-        logger.info(f"   Reranker max length: {self.reranker_max_length}")
+        logger.info(f"   Reranker available: {self.reranker_model.is_available()}")
+        logger.info(f"   Reranker batch size: {self.reranker_model.batch_size}")
+        logger.info(f"   Reranker FP16: {self.reranker_model.use_fp16}")
+        logger.info(f"   Reranker max length: {self.reranker_model.max_length}")
         logger.info(f"   MMR: fetch_k={self.mmr_fetch_k}, lambda={self.mmr_lambda_mult}")
         logger.info(f"   Ensemble: FAISS={self.default_faiss_weight}, BM25={self.default_bm25_weight}")
         logger.info(f"   Retrieval k: FAISS={self.default_faiss_k}, BM25={self.default_bm25_k}")
-    
-    def _load_reranker(self):
-        """
-        Load reranker model with detailed logging.
-        """
-        if not RERANKER_AVAILABLE:
-            logger.warning("⚠️ FlagEmbedding not available. Reranking disabled.")
-            return
-        
-        logger.info("=" * 70)
-        logger.info("🔄 LOADING RERANKER MODEL")
-        logger.info("=" * 70)
-        
-        try:
-            # Suppress annoying warnings
-            logging.getLogger("transformers.tokenization_utils_base").setLevel(logging.ERROR)
-            warnings.filterwarnings("ignore", category=UserWarning, module="transformers")
-            
-            base_path = self.reranker_model_path
-            logger.info(f"📂 Checking path: {base_path}")
-            
-            if not os.path.exists(base_path):
-                logger.warning(f"❌ Reranker model not found at: {base_path}")
-                logger.warning("   Please ensure the model is downloaded to this location.")
-                logger.info("   You can set RERANKER_MODEL_PATH environment variable.")
-                self.reranker = None
-                return
-            
-            logger.info(f"✅ Model directory found: {base_path}")
-            
-            # Check for snapshots (HuggingFace cache format)
-            snapshots_path = os.path.join(base_path, 'snapshots')
-            model_path = base_path
-            
-            if os.path.exists(snapshots_path):
-                logger.info(f"📁 Found snapshots directory: {snapshots_path}")
-                snapshots = [d for d in os.listdir(snapshots_path) 
-                           if os.path.isdir(os.path.join(snapshots_path, d))]
-                if snapshots:
-                    model_path = os.path.join(snapshots_path, snapshots[0])
-                    logger.info(f"   Using snapshot: {snapshots[0]}")
-                    logger.info(f"   Model path: {model_path}")
-            else:
-                logger.info(f"📁 Using model path: {model_path}")
-            
-            # Check for config.json
-            config_path = os.path.join(model_path, "config.json")
-            if os.path.exists(config_path):
-                logger.info(f"✅ config.json found")
-            else:
-                logger.warning(f"⚠️ config.json not found at {config_path}")
-            
-            # Log what we're loading
-            logger.info("-" * 70)
-            logger.info("📦 Loading FlagReranker with settings:")
-            logger.info(f"   Model path: {model_path}")
-            logger.info(f"   FP16: {self.reranker_use_fp16}")
-            logger.info(f"   Device: {'cuda' if self.reranker_use_fp16 else 'cpu'}")
-            logger.info("-" * 70)
-            logger.info("⏳ Loading model into memory (this may take a moment)...")
-            
-            # Load the model
-            self.reranker = FlagReranker(
-                model_path, 
-                use_fp16=self.reranker_use_fp16,
-                device="cuda" if self.reranker_use_fp16 else "cpu",
-            )
-            
-            logger.info("=" * 70)
-            logger.info(f"✅ Reranker loaded successfully!")
-            logger.info(f"   Path: {model_path}")
-            logger.info(f"   FP16: {self.reranker_use_fp16}")
-            logger.info(f"   Device: {'cuda' if self.reranker_use_fp16 else 'cpu'}")
-            logger.info("=" * 70)
-                    
-        except Exception as e:
-            logger.error("=" * 70)
-            logger.error(f"❌ Failed to load reranker: {e}")
-            logger.error("   Falling back to no reranker. Retrieval will still work.")
-            logger.error("=" * 70)
-            self.reranker = None
-    
     
     def retrieve(
         self, 
@@ -169,30 +76,35 @@ class RetrievalService:
         2. Optional file filtering
         3. Reranking (cross-encoder) - optimized for speed
         """
-
+        # Check if we should use reranker
         if use_reranker is None:
-            use_reranker = self.enable_reranker and self.reranker is not None
+            use_reranker = self.enable_reranker and self.reranker_model.is_available()
         
+        # Get more candidates for reranking
         candidate_k = k * 3 if use_reranker else k
         if file_ids:
             candidate_k = candidate_k * 2
         
+        # Step 1: Get results from FAISS and BM25
         faiss_results = self._faiss_search(query, candidate_k)
         bm25_results = self._bm25_search(query, candidate_k)
         
+        # Step 2: Filter by file_ids if provided
         if file_ids:
             file_id_set = set(str(fid) for fid in file_ids)
             faiss_results = [d for d in faiss_results if str(d.metadata.get('document_id')) in file_id_set]
             bm25_results = [d for d in bm25_results if str(d.metadata.get('document_id')) in file_id_set]
             logger.info(f"📁 Filtered to {len(faiss_results)} FAISS, {len(bm25_results)} BM25 results")
         
+        # Step 3: Combine and deduplicate
         combined = self._combine_results(faiss_results, bm25_results)
         logger.info(f"📊 Combined {len(combined)} unique results")
         
         if not combined:
             return []
         
-        if use_reranker and self.reranker:
+        # Step 4: Rerank if enabled
+        if use_reranker and self.reranker_model.is_available():
             combined = self._rerank_optimized(query, combined, top_k=k)
         else:
             combined = combined[:k]
@@ -259,70 +171,70 @@ class RetrievalService:
         - Score caching
         - Parallel processing (via batch)
         """
-        if not self.reranker or not chunks:
+        if not self.reranker_model.is_available() or not chunks:
             return chunks[:top_k]
         
         try:
-            rerank_limit = min(len(chunks), self.rerank_top_k * 3)
+            # Limit chunks to rerank
+            rerank_limit = min(len(chunks), self.reranker_model.limit)
             chunks_to_rerank = chunks[:rerank_limit]
             
+            # Truncate text for speed
             texts = []
             for chunk in chunks_to_rerank:
                 content = chunk.page_content
-                
-                if len(content) > self.reranker_max_length:
-                    content = content[:self.reranker_max_length]
+                if len(content) > self.reranker_model.max_length:
+                    content = content[:self.reranker_model.max_length]
                 texts.append(content)
-
             
+            # Check cache for scores
             cached_scores = []
             chunks_to_compute = []
             chunks_to_compute_indices = []
             
             for i, text in enumerate(texts):
-                cache_key = f"{query[:100]}:{text[:100]}" 
+                cache_key = f"{query[:100]}:{text[:100]}"
                 if cache_key in self._score_cache:
                     cached_scores.append(self._score_cache[cache_key])
                 else:
                     chunks_to_compute.append(text)
                     chunks_to_compute_indices.append(i)
-                    cached_scores.append(None)  
+                    cached_scores.append(None)
             
+            # Compute scores for uncached chunks
             if chunks_to_compute:
-                batch_size = self.reranker_batch_size
+                # Process in batches
+                batch_size = self.reranker_model.batch_size
                 computed_scores = []
                 
                 for i in range(0, len(chunks_to_compute), batch_size):
                     batch_texts = chunks_to_compute[i:i + batch_size]
-                    batch_pairs = [(query, text) for text in batch_texts]
-                    
-                    batch_scores = self.reranker.compute_score(batch_pairs)
-                    
-                    if isinstance(batch_scores, float):
-                        batch_scores = [batch_scores]
-                    elif not isinstance(batch_scores, list):
-                        batch_scores = list(batch_scores)
-                    
+                    batch_scores = self.reranker_model.compute_scores(query, batch_texts)
                     computed_scores.extend(batch_scores)
                 
+                # Update cache
                 for idx, score in zip(chunks_to_compute_indices, computed_scores):
                     cache_key = f"{query[:100]}:{texts[idx][:100]}"
                     self._score_cache[cache_key] = score
                     
+                    # Limit cache size
                     if len(self._score_cache) > self._cache_max_size:
                         self._score_cache.pop(next(iter(self._score_cache)))
                     
                     cached_scores[idx] = score
             
+            # Pair chunks with scores and sort
             ranked = list(zip(chunks_to_rerank, cached_scores))
             ranked.sort(key=lambda x: x[1], reverse=True)
             
-            if not self.reranker_skip_scores:
+            # Store scores on chunks
+            if not self.reranker_model.skip_scores:
                 for chunk, score in ranked:
                     chunk.metadata['reranker_score'] = score
             
+            # Log results (top 3 only for speed)
             logger.info(f"🎯 Reranked {len(ranked)} chunks:")
-            for i, (chunk, score) in enumerate(ranked[:3], 1): 
+            for i, (chunk, score) in enumerate(ranked[:3], 1):
                 preview = chunk.page_content[:100].replace('\n', ' ')
                 filename = chunk.metadata.get('filename', 'unknown')
                 logger.info(f"   {i}. Score={score:.4f} - {preview}... (from: {filename})")
@@ -332,7 +244,6 @@ class RetrievalService:
         except Exception as e:
             logger.error(f"Reranking failed: {e}")
             return chunks[:top_k]
-    
     
     def search_with_ensemble(
         self,
@@ -364,7 +275,6 @@ class RetrievalService:
         results = ensemble.invoke(query)
         return results[:k]
     
-    
     def _get_faiss_retriever(self, k: int = 100):
         """Get FAISS retriever with optimized MMR"""
         vector_store = self.ingestion.get_vector_store()
@@ -380,7 +290,6 @@ class RetrievalService:
             }
         )
     
-    
     def _get_bm25_retriever(self, k: int = 100):
         """Get BM25 retriever"""
         all_chunks = self.ingestion.get_all_chunks()
@@ -391,17 +300,10 @@ class RetrievalService:
         bm25.k = k
         return bm25
     
-    
     def get_stats(self) -> Dict[str, Any]:
         """Get retrieval statistics"""
         return {
-            "reranker_available": self.reranker is not None,
-            "enable_reranker": self.enable_reranker,
-            "reranker_model_path": self.reranker_model_path,
-            "reranker_batch_size": self.reranker_batch_size,
-            "reranker_use_fp16": self.reranker_use_fp16,
-            "reranker_max_length": self.reranker_max_length,
-            "reranker_cache_size": self.reranker_cache_size,
+            "reranker": self.reranker_model.get_stats(),
             "mmr": {
                 "fetch_k": self.mmr_fetch_k,
                 "lambda_mult": self.mmr_lambda_mult
@@ -413,12 +315,11 @@ class RetrievalService:
                 "bm25_k": self.default_bm25_k
             },
             "rerank": {
-                "top_k": self.rerank_top_k
+                "top_k": self.rerank_top_k,
+                "enabled": self.enable_reranker
             }
         }
     
-    
     def clear_cache(self):
         """Clear reranker score cache"""
-        self._score_cache.clear()
-        logger.info("🗑️ Reranker cache cleared")
+        self.reranker_model.clear_cache()

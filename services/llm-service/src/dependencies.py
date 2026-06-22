@@ -9,6 +9,7 @@ from src.core.embedding_model import EmbeddingModel
 from src.core.document_loader import DocumentLoader
 from src.core.text_chunker import TextChunker
 from src.core.text_preprocessor import TextPreprocessor
+from src.core.reranker import RerankerModel
 from src.services.rag_service import RagService
 from src.services.ingestion_service import IngestionService
 from src.services.retrieval_service import RetrievalService
@@ -40,6 +41,7 @@ class DependencyInjection(Module):
         binder.bind(KafkaProducer, to=get_kafka_producer, scope=SingletonScope)
         binder.bind(LLMService, scope=SingletonScope)
         binder.bind(EmbeddingModel, scope=SingletonScope)
+        binder.bind(RerankerModel, scope=SingletonScope)
         binder.bind(DocumentLoader, scope=SingletonScope)
         binder.bind(TextPreprocessor, scope=SingletonScope)
         binder.bind(TextChunker, scope=SingletonScope)

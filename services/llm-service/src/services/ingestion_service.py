@@ -401,8 +401,7 @@ class IngestionService:
         
         logger.info(f"   Combined {total_pages} pages -> {len(chunks)} chunks")
         
-        return chunks
-    
+        return chunks 
     
     def get_chunks_by_page(self, document_id: str, page_number: int) -> List[Document]:
         """
@@ -446,9 +445,8 @@ class IngestionService:
             if start_page <= chunk.metadata.get('page_number', 0) <= end_page
         ]
         logger.info(f"📄 Retrieved {len(page_chunks)} chunks from pages {start_page}-{end_page}")
-        return page_chunks
-    
-    
+        return page_chunks 
+  
     def get_document_pages(self, document_id: str) -> List[int]:
         """
         Get all page numbers for a document.
@@ -467,8 +465,7 @@ class IngestionService:
         ))
         logger.info(f"📄 Document {document_id} has {len(pages)} pages")
         return pages
-    
-    
+      
     def get_page_count(self, document_id: str) -> int:
         """
         Get total number of pages for a document.
