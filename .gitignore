@@ -4,8 +4,17 @@ venv/
 env/
 ENV/
 
-# Models directory (often contains large binary files)
-models/
+# Models directory (keep folder, ignore contents)
+models/*
+!models/.gitkeep
+
+# Data directory (keep folder, ignore contents)
+data/*
+!data/.gitkeep
+
+# Uploads inside data (keep folder, ignore contents)
+data/uploads/*
+!data/uploads/.gitkeep
 
 # Python cache files
 __pycache__/
@@ -37,8 +46,7 @@ __pycache__/
 *.pyd
 .Python
 
-# Models
-models/
+# Models (large binary files)
 *.pkl
 *.h5
 *.pt
@@ -67,6 +75,5 @@ frontend/coverage/
 .DS_Store
 Thumbs.db
 
+# Uploads (old location)
 uploaded_files/
-data/
-data/uploaded_files
