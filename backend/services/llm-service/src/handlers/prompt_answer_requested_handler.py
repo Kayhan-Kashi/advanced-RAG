@@ -43,6 +43,15 @@ class PromptAnswerRequestedHandler:
             logger.info(f"✅ [LLM] Answer generated in {elapsed:.2f}s")
             logger.info(f"   Answer length: {len(answer)} characters")
             
+            print("==========PromptAnswerCompletedEvent==============", flush=True)
+            print(PromptAnswerCompletedEvent(
+                conversation_id=event.conversation_id,
+                dialogue_id=event.dialogue_id,
+                prompt=event.prompt,
+                full_answer=answer
+            ).model_dump(), flush=True)
+            print("========================", flush=True)
+            
             return PromptAnswerCompletedEvent(
                 conversation_id=event.conversation_id,
                 dialogue_id=event.dialogue_id,

@@ -23,6 +23,7 @@ class UploadedFile(BaseModel, table=True):
     name: str
     path: str
     category: str
+    status: str
 
 
 class Conversation(BaseModel, table=True):

@@ -4,7 +4,7 @@ import json
 import sys
 import traceback
 import os
-from confluent_kafka import Consumer, Producer
+from confluent_kafka import Consumer, Producer, KafkaError  
 from injector import Injector
 import logging
 
@@ -71,6 +71,16 @@ def get_producer() -> Producer:
     return producer
 
 
+def make_delivery_report(event_type, topic):
+    """Factory function to create delivery report with captured values"""
+    def delivery_report(err, msg):
+        if err:
+            print(f"[llm-service] ❌ Failed to publish {event_type}: {err}", flush=True)
+        else:
+            print(f"[llm-service] 📤 Published {event_type} to {topic}", flush=True)
+    return delivery_report
+
+
 async def publish_event(event):
     """Publish event to Kafka"""
     try:
@@ -78,20 +88,23 @@ async def publish_event(event):
         
         event_data = json.dumps(event.model_dump(), default=str).encode('utf-8')
         
-        def delivery_report(err, msg):
-            if err:
-                print(f"[llm-service] ❌ Failed to publish {event.event_type}: {err}", flush=True)
+        # Get event_type as string
+        if hasattr(event, 'event_type'):
+            if callable(event.event_type):
+                event_type = event.event_type()
             else:
-                print(f"[llm-service] 📤 Published {event.event_type} to {msg.topic()}", flush=True)
+                event_type = event.event_type
+        else:
+            event_type = event.__class__.__name__
         
-        # Get topic - FIX: call if it's a method
+        # Get topic as string
         if hasattr(event, 'topic'):
             if callable(event.topic):
-                topic = event.topic()  # ← Call it!
+                topic = event.topic()
             else:
                 topic = event.topic
         else:
-            topic = event.__class__.topic()  # ← Call it!
+            topic = event.__class__.topic()
         
         key = getattr(event, 'conversation_id', None) or getattr(event, 'document_id', None)
         
@@ -99,14 +112,17 @@ async def publish_event(event):
             topic=topic,
             key=key,
             value=event_data,
-            callback=delivery_report
+            callback=make_delivery_report(event_type, topic)
         )
-        prod.poll(0)
+        
+        # ✅ Flush to ensure callback executes before next event
+        prod.flush()
         
     except Exception as exc:
         print(f"[llm-service] ❌ Error publishing event: {exc}", flush=True)
         traceback.print_exc()
         
+
 # ============================================
 # Core message processor
 # ============================================
@@ -148,6 +164,7 @@ async def create_consumer() -> Consumer:
         'auto.offset.reset': 'earliest',
         'enable.auto.commit': True,
         'auto.commit.interval.ms': 5000,
+        'allow.auto.create.topics': True,  
     }
     
     consumer = Consumer(conf)
@@ -190,8 +207,13 @@ async def main():
                 continue
             
             if msg.error():
-                print(f"[llm-service] Consumer error: {msg.error()}", flush=True)
-                continue
+                if msg.error().code() == KafkaError._UNKNOWN_TOPIC_OR_PART:
+                    print(f"[llm-service] ⚠️ Topic not available yet, waiting 3s...", flush=True)
+                    await asyncio.sleep(3)
+                    continue
+                else:
+                    print(f"[llm-service] Consumer error: {msg.error()}", flush=True)
+                    continue
             
             try:
                 message = json.loads(msg.value().decode('utf-8'))

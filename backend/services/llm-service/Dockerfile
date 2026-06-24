@@ -2,7 +2,9 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-ARG PIP_INDEX_URL=https://mirror-pypi.runflare.com/simple
+# ARG PIP_INDEX_URL=https://mirror-pypi.runflare.com/simple
+ARG PIP_INDEX_URL=https://pypi.org/simple
+
 
 COPY requirements.txt .
 RUN pip install -r requirements.txt --index-url ${PIP_INDEX_URL}

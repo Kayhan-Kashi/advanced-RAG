@@ -42,10 +42,20 @@ class DocumentUploadedHandler:
             logger.info(f"✅ [LLM] Document ingested in {elapsed:.2f}s")
             logger.info(f"   Created {len(chunks)} chunks")
             
+            print("============DocumentEmbeddingDoneEvent============", flush=True)
+            print(DocumentEmbeddingDoneEvent(
+                document_id=event.document_id,
+                filetype=event.filetype,
+                filename=event.filename,
+                status="indexed"
+            ).model_dump(), flush=True)
+            print("========================", flush=True)
+            
             return DocumentEmbeddingDoneEvent(
                 document_id=event.document_id,
                 filetype=event.filetype,
-                filename=event.filename
+                filename=event.filename,
+                status="indexed"
             )
             
         except FileNotFoundError as e:

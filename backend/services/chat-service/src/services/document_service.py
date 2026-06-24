@@ -51,9 +51,10 @@ class DocumentService:
             
             document = UploadedFile(
                 id=file_id,
-                name=file.filename,
+                name=file.filename, 
                 path=file_path,
-                category=category
+                category=category,  
+                status="uploaded"    
             )
             session.add(document)
             session.commit()
@@ -62,6 +63,7 @@ class DocumentService:
             logger.info(f"✅ Document uploaded: {file.filename}")
             logger.info(f"   Document ID: {document.id}")
             logger.info(f"   File path: {document.path}")
+            logger.info(f"   Status: {document.status}")
             
             if self.kafka_producer:
                 doc_event = DocumentUploadedEvent(
@@ -159,6 +161,32 @@ class DocumentService:
             logger.error(traceback.format_exc())
             raise HTTPException(status_code=500, detail=f"Error deleting document: {str(e)}")
     
+    def update_document_status(
+        self,
+        session: Session,
+        document_id: str,
+        status: str,
+    ) -> Optional[UploadedFile]:
+        """Update document status"""
+        try:
+            document = session.get(UploadedFile, uuid.UUID(document_id))
+            if not document:
+                logger.warning(f"⚠️ Document not found: {document_id}")
+                return None
+            
+            document.status = status
+            
+            session.add(document)
+            session.commit()
+            session.refresh(document)
+            
+            logger.info(f"✅ Document {document_id} status updated to: {status}")
+            return document
+            
+        except Exception as e:
+            logger.error(f"❌ Error updating document status: {str(e)}")
+            return None
+    
     def get_document_stats(
         self,
         session: Session
@@ -169,12 +197,16 @@ class DocumentService:
             
             stats = {
                 "total_documents": len(documents),
-                "by_category": {}
+                "by_category": {},
+                "by_status": {}
             }
             
             for doc in documents:
                 cat = doc.category
                 stats["by_category"][cat] = stats["by_category"].get(cat, 0) + 1
+                
+                status = doc.status or "unknown"
+                stats["by_status"][status] = stats["by_status"].get(status, 0) + 1
             
             logger.info(f"📊 Retrieved document stats: {stats['total_documents']} documents")
             return stats

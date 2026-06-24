@@ -68,6 +68,27 @@ services:
     working_dir: /app
 
 
+  rag-chat-worker:
+    build:
+      context: .
+      dockerfile: backend/services/chat-service/Dockerfile-worker
+    container_name: rag-chat-worker
+    environment:
+      - PYTHONPATH=/app:/app/src 
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - DATABASE_URL=sqlite://///app/data/database.db
+      - ENVIRONMENT=production
+    volumes:
+      - ./data:/app/data
+      - ./data/uploaded_files:/app/uploads 
+    depends_on:
+      - kafka
+      - rag-chat-service
+    networks:
+      - rag-net
+    working_dir: /app
+
+
   rag-llm-service:
       build:
         context: .
