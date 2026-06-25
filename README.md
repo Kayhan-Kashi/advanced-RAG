@@ -1,21 +1,22 @@
-#  Advanced Event-Driven RAG System
+Here's the updated README with the corrected title and models folder structure:
 
-**Hybrid Retrieval (FAISS + MMR + BM25 + BGE Reranker + HyDE) using Event-Driven Architecture (Microservices with Kafka Message Broker) running on Local Models (OLLAMA)**
+```markdown
+# ⚡ Advanced Event-Driven RAG System
+
+**Event-Driven RAG System Hybrid Retrieval (FAISS + MMR + BM25 + BGE Reranker + HyDE) using Event-Driven Architecture (Microservices with Kafka Message Broker) running on Local Models (OLLAMA)**
 
 [![Python](https://img.shields.io/badge/Python-3.11-blue)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104-green)](https://fastapi.tiangolo.com/)
-[![Event-Driven](https://img.shields.io/badge/Event-Driven-Kafka-brightgreen)](https://kafka.apache.org/)
-[![Kafka](https://img.shields.io/badge/Message%20Broker-Kafka-red)](https://kafka.apache.org/)
-[![Microservices](https://img.shields.io/badge/Architecture-Microservices-purple)](#)
-[![OLLAMA](https://img.shields.io/badge/Local%20Models-OLLAMA-orange)](https://ollama.com/)
 [![FAISS](https://img.shields.io/badge/FAISS-MMR-purple)](https://github.com/facebookresearch/faiss)
 [![BM25](https://img.shields.io/badge/BM25-Sparse-yellow)](#)
 [![BGE](https://img.shields.io/badge/BGE-Reranker-blue)](https://github.com/FlagOpen/FlagEmbedding)
 [![HyDE](https://img.shields.io/badge/HyDE-Query%20Transform-pink)](#)
+[![Kafka](https://img.shields.io/badge/Message%20Broker-Kafka-red)](https://kafka.apache.org/)
+[![Microservices](https://img.shields.io/badge/Architecture-Microservices-purple)](#)
+[![OLLAMA](https://img.shields.io/badge/Local%20Models-OLLAMA-orange)](https://ollama.com/)
 [![React](https://img.shields.io/badge/React-18-blue)](https://reactjs.org/)
 [![Docker](https://img.shields.io/badge/Docker-24.0-blue)](https://www.docker.com/)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
-[![Privacy](https://img.shields.io/badge/Privacy-First-brightgreen)](#)
 
 ---
 
@@ -224,10 +225,15 @@ advanced-rag/
 │   ├── faiss_index/
 │   └── bm25_index/
 ├── models/
-│   ├── snapshot/
-│   │   └── jina-embeddings-v3/
-│   └── BAAI/
-│       └── models--BAAI--bge-reranker-v2-m3/
+│   ├── .cache/                  # HuggingFace cache
+│   ├── BAAI/                    # BGE reranker model
+│   │   └── models--BAAI--bge-reranker-v2-m3/
+│   ├── bm25_index/              # BM25 index files
+│   ├── dynamic_modules/         # Dynamic modules for models
+│   ├── faiss_index/             # FAISS vector index
+│   ├── hf_cache/                # HuggingFace cache
+│   └── snapshot/                # Jina embeddings model
+│       └── jina-embeddings-v3/
 ├── docker-compose.yml
 ├── .env.example
 ├── .gitignore
@@ -484,37 +490,3 @@ If you find this project useful, please give it a star! ⭐
 - [FastAPI](https://fastapi.tiangolo.com/) for the API framework
 
 ---
-
-## 📞 Contact
-
-For questions or support, please open an issue on GitHub.
-
----
-
-**Made with ❤️ and 🤖**
-```
-
----
-
-## How to Download
-
-### Option 1: Copy and Save
-1. Select all the content above
-2. Copy it (Ctrl+C or Cmd+C)
-3. Create a new file named `README.md`
-4. Paste the content (Ctrl+V or Cmd+V)
-5. Save the file
-
-### Option 2: Download via Command Line
-```bash
-# Create the file
-touch README.md
-
-# Then open and paste the content
-```
-
-### Option 3: Using curl (if hosted)
-If you host this content somewhere:
-```bash
-curl -o README.md https://your-url.com/readme-content.md
-```
