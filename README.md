@@ -285,7 +285,7 @@ docker-compose up -d
 ### 6. Access the Application
 
 - **Frontend**: http://localhost:3000
-- **Chat Service API**: http://localhost:8001/docs
+- **Chat Service API**: http://localhost:8001
 - **Kafka UI**: http://localhost:9000
 
 ---
